@@ -29,6 +29,8 @@
 
 #include "hardlink.h"
 
+const string HARDLINK_VERSION = "0.02";
+
 const bool debug = true;
 
 const bool debug1 = false;
@@ -38,21 +40,8 @@ vector<string> dirs;
 // Vector of all of our files that we have info about
 vector< vector<file_info> > file_vector( MAX_HASHES );
 
-// list of files hardlinked
-// I know there is a better way to do this in STL I just haven't bothered to
-// look it up yet :)
-struct tuple_string
-{
-    string string1;
-    string string2;
-};
-vector<tuple_string> hardlinkedfiles;
-
 // statistics globals
-long long ndirs = 0, nobjects = 0, nregfiles = 0, nmmap = 0, ncomp = 0,
-                                nlinks = 0, nsaved = 0, nhardlinked = 0,
-				ntotalsaved = 0;
-
+cStatistics gStats;
 
 
 int main( int argc, char **argv )
@@ -60,7 +49,8 @@ int main( int argc, char **argv )
     // See if they passed in any parameters
     if ( argc < 2 )
     {
-	cout << "hardlink++ version 0.01, Copyright (C) 2003 John L. Villalovos" << endl;
+	cout << "hardlink++ version " << HARDLINK_VERSION;
+	cout << ", Copyright (C) 2003 John L. Villalovos" << endl;
 	cout << "Contact: software@sodarock.com" << endl;
 	cout << "hardlink++ comes with ABSOLUTELY NO WARRANTY; for details" << endl;
 	cout << "see the COPYING file.  This is free software, and you are" << endl;
@@ -87,7 +77,7 @@ int main( int argc, char **argv )
     }
 
     // Now go through all the directories that have been added.
-    // NOTE: hardlink_identical_files will add more directories to the global
+    // NOTE: hardlink_identical_files() will add more directories to the global
     //	     dirs vector as it finds them.
     while ( ! dirs.empty() )
     {
@@ -103,7 +93,7 @@ int main( int argc, char **argv )
             continue;
         }
         // Bump directory count
-        ndirs++;
+	gStats.foundDirectory();
 
         struct dirent *dir_entry;
         // Loop through all the files in the directory
@@ -166,7 +156,8 @@ int main( int argc, char **argv )
         }
     */
 
-    doexit( 0 );
+    // Print out our statistics
+    gStats.print();
     return 0;
 }
 
@@ -254,7 +245,7 @@ bool areFileContentsEqual( const string & filename1, const string & filename2 )
                         char_input( file2 ) );
 
     }
-    ncomp++;
+    gStats.didComparison();
     return result;
 }
 
@@ -276,51 +267,6 @@ bool areFilesHardlinkable( const file_info & file1, const file_info & file2 )
     return result;
 }
 
-void printHardlinkedFiles()
-{
-
-    // Debug output.
-    if ( !hardlinkedfiles.empty() )
-    {
-	cout << "Files Hardlinked this run:" << endl;
-	for ( unsigned int i = 0; i < hardlinkedfiles.size(); ++i )
-	{
-	    tuple_string tempString( hardlinkedfiles[ i ] );
-	    cout << "Hardlinked: " << tempString.string2 << endl;
-	    cout << "        to: " << tempString.string1 << endl;
-	}
-	cout << endl;
-    }
-
-}
-
-
-void doexit( int i )
-{
-    cout << "\n\n";
-    printHardlinkedFiles();
-    cout << "Directories           : " << ndirs << endl;
-    cout << "Objects               : " << nobjects << endl;
-    cout << "Regular files         : " << nregfiles << endl;
-    cout << "Comparisons           : " << ncomp << endl;
-    cout << "Hardlinked this run   : " << nlinks << endl;
-    cout << "Total hardlinks       : " << nhardlinked << endl;
-    cout << "Bytes saved this run  : " << nsaved << endl;
-    if ( ntotalsaved > 1024 * 1024 * 1024 )
-    {
-	cout << "Total gibibytes saved : " << ntotalsaved / (1024.0 * 1024 * 1024) << endl;
-    }
-    if ( ntotalsaved > 1024 * 1024 )
-    {
-	cout << "Total mibibytes saved : " << ntotalsaved / (1024.0 * 1024) << endl;
-    }
-    if ( ntotalsaved > 1024 )
-    {
-	cout << "Total kibibytes saved : " << ntotalsaved / 1024.0 << endl;
-    }
-    cout << "Total bytes saved     : " << ntotalsaved << endl;
-    exit( i );
-}
 
 // Hardlink two files together
 bool hardlinkfiles( const file_info & sourcefile, const file_info & destfile )
@@ -353,22 +299,13 @@ bool hardlinkfiles( const file_info & sourcefile, const file_info & destfile )
             // Delete the renamed version since we don't need it.
             unlink ( temp_name.c_str() );
             // update our stats
-            nlinks++;
-	    nhardlinked++;
-            nsaved += sourcefile.stat_info.st_size;
-	    ntotalsaved += sourcefile.stat_info.st_size;
+	    gStats.didHardlink( sourcefile.filename, destfile.filename,
+		    sourcefile.stat_info.st_size );
             cout << "Linked " << sourcefile.filename << " to " <<
             destfile.filename << ", saved " << sourcefile.stat_info.st_size
             << endl;
             result = true;
         }
-    }
-    if ( result )
-    {
-        tuple_string tempString;
-        tempString.string1 = sourcefile.filename;
-        tempString.string2 = destfile.filename;
-        hardlinkedfiles.push_back( tempString );
     }
     return result;
 }
@@ -404,9 +341,6 @@ void hardlink_identical_files( const string & filename )
     //  Add the file info to the list of files that have the same hash
     //  value.
 
-    // Bump our count of objects checked
-    nobjects++;
-
     // Create our structures to hold our file info
     struct stat stat_info;
     // Get the file status info
@@ -430,7 +364,7 @@ void hardlink_identical_files( const string & filename )
         // Create the hash for the file
         unsigned int file_hash = hash ( stat_info.st_size, stat_info.st_mtime );
         // Bump count of regular files found
-        nregfiles++;
+        gStats.foundRegularFile();
 
         cout << "File: " << filename << endl;
 
@@ -454,8 +388,7 @@ void hardlink_identical_files( const string & filename )
                 // Don't save it since we already have it, via hardlink, in the
                 // vector
                 found_match = true;
-		nhardlinked++;
-		ntotalsaved += stat_info.st_size;
+		gStats.foundHardlink( stat_info.st_size );
                 break;
             }
             // See if the files should be hardlinked
