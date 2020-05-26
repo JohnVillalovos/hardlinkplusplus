@@ -1,0 +1,19 @@
+WHAT IT DOES:
+hardlink++ will recurse through all the directories you specify and try to find
+files which can be hardlinked together to save disk space.  This is most useful
+when you are a mirror for ftp sites.  Many times there will be duplicate
+packages on a mirror site and this can be a great savings of disk space
+
+HOW:
+This is a rewrite of the hardlink.c code using C++ and the STL.  At the moment
+it doesn't use any object oriented programming techniques.
+
+WHY:
+The main reason I did this is that I liked what the hardlink.c code did but did
+not like the code itself.  To me it was very unmaintainable.  So I converted
+hardlink.c to hardlink.cpp.
+
+WHO:
+John L. Villalovos
+software@sodarock.com
+14-Aug-2003
